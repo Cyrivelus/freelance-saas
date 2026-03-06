@@ -7,5 +7,5 @@ export async function POST() {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "ok" });
+  return NextResponse.json({ status: "Simulation active" });
 }
