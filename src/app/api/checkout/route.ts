@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
 
-// On force le mode dynamique pour éviter les erreurs de build
+// On force le mode dynamique pour éviter que Vercel n'analyse le contenu
 export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    // Simuler un délai de traitement
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    // Au lieu d'aller vers Stripe, on renvoie vers le dashboard avec un message de succès simulé
-    // Dans un vrai projet, c'est ici qu'on mettrait la logique Stripe
+    // On simule une redirection vers une page de succès
+    // Cela permet de tester votre UI sans aucun SDK externe
     return NextResponse.json({
-      url: "/dashboard?success=pro_plan_activated",
-      message: "Mode démo : Plan Pro activé (Simulation)",
+      url: "/dashboard?success=true",
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: "Erreur de simulation" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Erreur simulation" }, { status: 500 });
   }
+}
+
+// On ajoute un GET vide au cas où pour éviter le 405
+export async function GET() {
+  return NextResponse.json({ message: "Checkout API Ready" });
 }
