@@ -1,35 +1,23 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-01-27" as any, // Utilise la version la plus stable
-});
+// On force le mode dynamique pour éviter les erreurs de build
+export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: {
-              name: "Abonnement Freelance Pro",
-              description: "Accès illimité aux factures et dashboard avancé",
-            },
-            unit_amount: 1900, // 19.00€
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        },
-      ],
-      mode: "subscription",
-      success_url: `${process.env.NEXT_PUBLIC_URL || "http://localhost:3000"}/dashboard?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_URL || "http://localhost:3000"}/dashboard?canceled=true`,
-    });
+    // Simuler un délai de traitement
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
-    return NextResponse.json({ url: session.url });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Au lieu d'aller vers Stripe, on renvoie vers le dashboard avec un message de succès simulé
+    // Dans un vrai projet, c'est ici qu'on mettrait la logique Stripe
+    return NextResponse.json({
+      url: "/dashboard?success=pro_plan_activated",
+      message: "Mode démo : Plan Pro activé (Simulation)",
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Erreur de simulation" },
+      { status: 500 },
+    );
   }
 }
