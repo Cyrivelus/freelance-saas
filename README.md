@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 FreelanceSaaS - Plateforme de Gestion Micro-SaaS
 
-## Getting Started
+[![Vercel](https://img.shields.io/badge/Vercel-Deploy-black?style=flat&logo=vercel)](VOTRE_LIEN_VERCEL_ICI)
+[![Next.js](https://img.shields.io/badge/Next.js-15-blue?style=flat&logo=next.js)](https://nextjs.org/)
 
-First, run the development server:
+Une application Full-Stack moderne conçue pour aider les freelances à gérer leurs clients, suivre leurs revenus en temps réel et exposer une API documentée.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🌟 Points Forts du Projet
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Tableau de Bord Dynamique :** Visualisation des revenus mensuels avec Recharts.
+- **API Publique Documentée :** Swagger UI intégré pour tester les points d'entrée `/api/clients`.
+- **Base de Données Temps Réel :** Connecté à Supabase (PostgreSQL).
+- **Sécurité :** Middleware de protection des routes et gestion des variables d'environnement.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🛠 Stack Technique
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Frontend :** Next.js 15 (App Router), Tailwind CSS, Lucide React.
+- **Backend :** Next.js API Routes, Zod (Validation).
+- **Base de données :** Supabase (PostgreSQL).
+- **Graphiques :** Recharts.
 
-## Learn More
+## 🚀 Installation & Test
 
-To learn more about Next.js, take a look at the following resources:
+1. Cloner le dépôt : `git clone [URL_DU_REPO]`
+2. Installer les dépendances : `npm install`
+3. Créer un fichier `.env.local` avec vos clés Supabase.
+4. Lancer en local : `npm run dev`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📖 Documentation API
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Accédez à la documentation interactive sur `/api-doc` après avoir lancé l'application.

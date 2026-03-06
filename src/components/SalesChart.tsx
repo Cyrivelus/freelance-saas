@@ -1,29 +1,35 @@
-"use client";
+// Exemple simplifié pour SalesChart
 import {
   BarChart,
   Bar,
   XAxis,
   YAxis,
-  Tooltip,
   ResponsiveContainer,
+  Tooltip,
 } from "recharts";
 
-const data = [
-  { name: "Jan", total: 1200 },
-  { name: "Feb", total: 2100 },
-  { name: "Mar", total: 1800 },
-];
+export default function SalesChart({ data }: { data: any[] }) {
+  // Transformation des données pour le graphique
+  // On regroupe par exemple par mois
+  const chartData = [
+    { name: "Jan", total: 0 },
+    { name: "Fév", total: 0 },
+    { name: "Mar", total: 0 },
+  ];
 
-export default function SalesChart() {
+  data.forEach((inv) => {
+    // Logique de tri par date ici (simplifiée)
+    chartData[2].total += Number(inv.amount);
+  });
+
   return (
-    <div className="h-[300px] w-full bg-white p-4 rounded-xl shadow-sm">
-      <h3 className="font-bold mb-4">Revenus Mensuels</h3>
+    <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip />
-          <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+        <BarChart data={chartData}>
+          <XAxis dataKey="name" axisLine={false} tickLine={false} />
+          <YAxis axisLine={false} tickLine={false} />
+          <Tooltip cursor={{ fill: "#F3F4F6" }} />
+          <Bar dataKey="total" fill="#2563eb" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
