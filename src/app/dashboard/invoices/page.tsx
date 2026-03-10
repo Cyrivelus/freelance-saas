@@ -12,12 +12,11 @@ import {
   Search,
   TrendingUp,
   AlertCircle,
-  BarChart3,
   Printer,
   Target,
 } from "lucide-react";
 
-// --- IMPORTS DYNAMIQUES ---
+// --- IMPORTS DYNAMIQUES CORRIGÉS ---
 const PDFDownloadLink = dynamic(
   () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
   { ssr: false, loading: () => <Loader2 className="animate-spin" size={18} /> },
@@ -56,13 +55,13 @@ export default function InvoicesPage() {
     setLoading(true);
     try {
       const [invRes, cliRes] = await Promise.all([
-        fetch("/api/invoices", { cache: "no-store" }),
-        fetch("/api/clients", { cache: "no-store" }),
+        fetch("/api/invoices"),
+        fetch("/api/clients"),
       ]);
       if (invRes.ok) setInvoices(await invRes.json());
       if (cliRes.ok) setClients(await cliRes.json());
     } catch (error) {
-      console.error("Fetch error:", error);
+      console.error("Erreur de chargement:", error);
     } finally {
       setLoading(false);
     }
@@ -83,273 +82,200 @@ export default function InvoicesPage() {
     if (res.ok) fetchData();
   };
 
-  // --- LOGIQUE METIER (Stats & Filtrage) ---
-  const { stats, chartData, monthlyProgress, processedInvoices } =
-    useMemo(() => {
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+  // --- LOGIQUE MÉTIER ---
+  const { stats, monthlyProgress, processedInvoices } = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const lastMonthDate = new Date();
+    lastMonthDate.setMonth(now.getMonth() - 1);
 
-      const lastMonthDate = new Date();
-      lastMonthDate.setMonth(now.getMonth() - 1);
-      const lastMonth = lastMonthDate.getMonth();
-      const lastYear = lastMonthDate.getFullYear();
+    let currentMonthTotal = 0;
+    let lastMonthTotal = 0;
 
-      let currentMonthTotal = 0;
-      let lastMonthTotal = 0;
+    const filtered = invoices
+      .filter((inv) => {
+        const invDate = new Date(inv.created_at);
+        const matchesSearch = (inv.clients?.name || "")
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase());
+        const matchesStatus =
+          statusFilter === "Tous" || inv.status === statusFilter;
 
-      // 1. Filtrage
-      const filtered = invoices
-        .filter((inv) => {
-          const invDate = new Date(inv.created_at);
-          const matchesSearch = (inv.clients?.name || "")
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase());
-          const matchesStatus =
-            statusFilter === "Tous" || inv.status === statusFilter;
+        let matchesPeriod = true;
+        if (periodFilter === "Mois") {
+          matchesPeriod =
+            invDate.getMonth() === currentMonth &&
+            invDate.getFullYear() === currentYear;
+        } else if (periodFilter === "DernierMois") {
+          matchesPeriod =
+            invDate.getMonth() === lastMonthDate.getMonth() &&
+            invDate.getFullYear() === lastMonthDate.getFullYear();
+        } else if (periodFilter === "Annee") {
+          matchesPeriod = invDate.getFullYear() === currentYear;
+        }
+        return matchesSearch && matchesStatus && matchesPeriod;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
 
-          let matchesPeriod = true;
-          if (periodFilter === "Mois") {
-            matchesPeriod =
-              invDate.getMonth() === currentMonth &&
-              invDate.getFullYear() === currentYear;
-          } else if (periodFilter === "DernierMois") {
-            matchesPeriod =
-              invDate.getMonth() === lastMonth &&
-              invDate.getFullYear() === lastYear;
-          } else if (periodFilter === "Annee") {
-            matchesPeriod = invDate.getFullYear() === currentYear;
-          }
-          return matchesSearch && matchesStatus && matchesPeriod;
-        })
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
+    invoices.forEach((inv) => {
+      const d = new Date(inv.created_at);
+      const val = Number(inv.amount);
+      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear)
+        currentMonthTotal += val;
+      if (
+        d.getMonth() === lastMonthDate.getMonth() &&
+        d.getFullYear() === lastMonthDate.getFullYear()
+      )
+        lastMonthTotal += val;
+    });
 
-      // 2. Progression
-      invoices.forEach((inv) => {
-        const d = new Date(inv.created_at);
-        if (d.getMonth() === currentMonth && d.getFullYear() === currentYear)
-          currentMonthTotal += Number(inv.amount);
-        if (d.getMonth() === lastMonth && d.getFullYear() === lastYear)
-          lastMonthTotal += Number(inv.amount);
-      });
-
-      // 3. Graphique
-      const last6 = Array.from({ length: 6 }, (_, i) => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i);
-        return {
-          month: d.toLocaleString("fr-FR", { month: "short" }),
-          total: 0,
-          m: d.getMonth(),
-          y: d.getFullYear(),
-        };
-      }).reverse();
-
-      invoices.forEach((inv) => {
-        const d = new Date(inv.created_at);
-        const idx = last6.findIndex(
-          (m) => m.m === d.getMonth() && m.y === d.getFullYear(),
-        );
-        if (idx !== -1) last6[idx].total += Number(inv.amount);
-      });
-
-      return {
-        processedInvoices: filtered,
-        stats: {
-          totalPaid: invoices
-            .filter((i) => i.status === "Payée")
-            .reduce((a, b) => a + Number(b.amount), 0),
-          totalPending: invoices
-            .filter((i) => i.status === "En attente")
-            .reduce((a, b) => a + Number(b.amount), 0),
-          countPending: invoices.filter((i) => i.status === "En attente")
-            .length,
-        },
-        chartData: last6,
-        monthlyProgress: {
-          current: currentMonthTotal,
-          last: lastMonthTotal,
-          percent:
-            lastMonthTotal > 0
-              ? Math.min((currentMonthTotal / lastMonthTotal) * 100, 100)
-              : 100,
-          growth:
-            lastMonthTotal > 0
-              ? ((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100
-              : 0,
-        },
-      };
-    }, [invoices, searchTerm, statusFilter, periodFilter]);
+    return {
+      processedInvoices: filtered,
+      stats: {
+        totalPaid: invoices
+          .filter((i) => i.status === "Payée")
+          .reduce((a, b) => a + Number(b.amount), 0),
+        totalPending: invoices
+          .filter((i) => i.status === "En attente")
+          .reduce((a, b) => a + Number(b.amount), 0),
+        countPending: invoices.filter((i) => i.status === "En attente").length,
+      },
+      monthlyProgress: {
+        current: currentMonthTotal,
+        last: lastMonthTotal,
+        percent:
+          lastMonthTotal > 0
+            ? Math.min((currentMonthTotal / lastMonthTotal) * 100, 100)
+            : 100,
+        growth:
+          lastMonthTotal > 0
+            ? ((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100
+            : 0,
+      },
+    };
+  }, [invoices, searchTerm, statusFilter, periodFilter]);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-24 px-4 md:px-6 animate-in fade-in duration-500">
-      {/* Header */}
+    <div className="max-w-7xl mx-auto space-y-6 pb-24 px-4 md:px-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 py-4">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">
-            Dashboard Facturation
-          </h1>
-          <p className="text-sm text-gray-500 font-medium">
-            Gestion et exportations PDF/CSV
-          </p>
-        </div>
+        <h1 className="text-3xl font-black text-gray-900">Invoices</h1>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="w-full md:w-auto bg-blue-600 text-white px-8 py-4 rounded-2xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all font-bold shadow-xl shadow-blue-200"
+          className="bg-blue-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 font-bold shadow-lg"
         >
           <Plus size={20} /> Nouvelle facture
         </button>
       </div>
 
-      {/* Widgets Stats */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-6">
-            <div className="flex items-center gap-2">
-              <Target size={18} className="text-blue-600" />
-              <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest text-blue-600">
-                Objectif Mensuel
-              </h3>
-            </div>
+        <div className="lg:col-span-2 bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xs font-black uppercase tracking-widest text-blue-600">
+              Objectif Mensuel
+            </h3>
             <span
-              className={`text-sm font-black ${monthlyProgress.growth >= 0 ? "text-green-600" : "text-red-600"}`}
+              className={
+                monthlyProgress.growth >= 0 ? "text-green-600" : "text-red-600"
+              }
             >
               {monthlyProgress.growth >= 0 ? "+" : ""}
               {monthlyProgress.growth.toFixed(1)}%
             </span>
           </div>
-          <div className="space-y-4">
-            <div className="flex justify-between items-end">
-              <span className="text-3xl font-black text-gray-900">
-                {monthlyProgress.current.toLocaleString()} €
-              </span>
-              <span className="text-sm font-bold text-gray-400">
-                Précédent : {monthlyProgress.last.toLocaleString()} €
-              </span>
-            </div>
-            <div className="h-4 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-600 rounded-full transition-all duration-1000"
-                style={{ width: `${monthlyProgress.percent}%` }}
-              />
-            </div>
+          <div className="text-3xl font-black mb-4">
+            {monthlyProgress.current.toLocaleString()} €
+          </div>
+          <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-600 transition-all duration-1000"
+              style={{ width: `${monthlyProgress.percent}%` }}
+            />
           </div>
         </div>
-
         <div className="space-y-4">
           <StatWidget
-            label="Encaissé"
+            label="Payées"
             val={stats.totalPaid}
             color="text-green-600"
             bg="bg-green-50"
             icon={TrendingUp}
           />
           <StatWidget
-            label="En attente"
+            label="Attente"
             val={stats.totalPending}
             color="text-amber-600"
             bg="bg-amber-50"
             icon={Clock}
           />
-          <StatWidget
-            label="Alertes"
-            val={stats.countPending}
-            color="text-red-600"
-            bg="bg-red-50"
-            icon={AlertCircle}
-            suffix=" docs"
-          />
         </div>
       </div>
 
-      {/* Toolbar */}
-      <div className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="Rechercher..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-4 bg-gray-50 border-none rounded-2xl outline-none font-medium"
-          />
-        </div>
-        <select
-          value={periodFilter}
-          onChange={(e) => setPeriodFilter(e.target.value)}
-          className="px-6 py-4 bg-gray-50 border-none rounded-2xl font-bold text-blue-600 outline-none cursor-pointer"
-        >
-          <option value="Mois">Ce mois</option>
-          <option value="DernierMois">Mois dernier</option>
-          <option value="Annee">Cette année</option>
-          <option value="Tous">Historique complet</option>
-        </select>
-        {isClient && processedInvoices.length > 0 && (
-          <PDFDownloadLink
-            document={
-              <BulkInvoicePDF
-                invoices={processedInvoices}
-                title={`Export ${periodFilter}`}
-              />
-            }
-            fileName={`export-${new Date().getTime()}.pdf`}
-            className="flex items-center justify-center gap-2 px-8 py-4 bg-blue-50 text-blue-700 rounded-2xl font-black text-xs hover:bg-blue-100 transition-all"
+      {/* Table Section */}
+      <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-50 flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+              size={18}
+            />
+            <input
+              className="w-full pl-11 pr-4 py-3 bg-gray-50 rounded-xl outline-none"
+              placeholder="Rechercher..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <select
+            className="bg-gray-50 px-4 py-3 rounded-xl font-bold text-blue-600 outline-none"
+            value={periodFilter}
+            onChange={(e) => setPeriodFilter(e.target.value)}
           >
-            {({ loading }) =>
-              loading ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <>
-                  <Printer size={16} /> PDF GROUPÉ
-                </>
-              )
-            }
-          </PDFDownloadLink>
-        )}
-      </div>
+            <option value="Mois">Ce mois</option>
+            <option value="DernierMois">Mois dernier</option>
+            <option value="Annee">Cette année</option>
+            <option value="Tous">Tout</option>
+          </select>
+        </div>
 
-      {/* Table */}
-      <div className="bg-white border border-gray-100 rounded-[2.5rem] overflow-hidden shadow-sm">
         <table className="w-full text-left">
-          <thead className="bg-gray-50/50 border-b border-gray-50">
+          <thead className="bg-gray-50/50">
             <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              <th className="px-8 py-5">Client</th>
-              <th className="px-8 py-5">Montant TTC</th>
-              <th className="px-8 py-5">Statut</th>
-              <th className="px-8 py-5 text-right">Actions</th>
+              <th className="px-8 py-4">Client</th>
+              <th className="px-8 py-4">Montant TTC</th>
+              <th className="px-8 py-4">Statut</th>
+              <th className="px-8 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {processedInvoices.map((inv) => (
               <tr
                 key={inv.id}
-                className="hover:bg-blue-50/20 transition-colors group"
+                className="hover:bg-blue-50/20 transition-colors"
               >
-                <td className="px-8 py-6">
-                  <p className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+                <td className="px-8 py-5">
+                  <div className="font-bold text-gray-900">
                     {inv.clients?.name || "Client"}
-                  </p>
-                  <p className="text-[10px] text-gray-400 font-mono uppercase tracking-tighter">
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-mono">
                     ID: {inv.id.substring(0, 8)}
-                  </p>
+                  </div>
                 </td>
-                <td className="px-8 py-6 text-xl font-black text-gray-900">
+                <td className="px-8 py-5 font-black">
                   {Number(inv.amount).toLocaleString()} €
                 </td>
-                <td className="px-8 py-6">
+                <td className="px-8 py-5">
                   <span
                     className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${inv.status === "Payée" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}
                   >
                     {inv.status}
                   </span>
                 </td>
-                <td className="px-8 py-6 text-right">
+                <td className="px-8 py-5 text-right">
                   <ActionButtons
                     inv={inv}
                     updateStatus={updateStatus}
@@ -361,29 +287,20 @@ export default function InvoicesPage() {
             ))}
           </tbody>
         </table>
-        {processedInvoices.length === 0 && !loading && (
-          <div className="p-20 text-center text-gray-400 font-bold">
-            Aucune facture trouvée.
-          </div>
-        )}
       </div>
 
-      {/* Modal Création */}
+      {/* Modal simplifié */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black text-gray-900">
-                Nouvelle Facture
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X size={24} />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] p-8 max-w-md w-full animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black">Nouvelle Facture</h2>
+              <button onClick={() => setIsModalOpen(false)}>
+                <X />
               </button>
             </div>
             <form
+              className="space-y-4"
               onSubmit={async (e) => {
                 e.preventDefault();
                 const res = await fetch("/api/invoices", {
@@ -401,13 +318,12 @@ export default function InvoicesPage() {
                   fetchData();
                 }
               }}
-              className="space-y-6"
             >
               <select
                 required
+                className="w-full p-4 bg-gray-50 rounded-xl font-bold outline-none"
                 value={selectedClientId}
                 onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold outline-none"
               >
                 <option value="">Sélectionner un client...</option>
                 {clients.map((c) => (
@@ -420,14 +336,14 @@ export default function InvoicesPage() {
                 required
                 type="number"
                 step="0.01"
+                className="w-full p-4 bg-gray-50 rounded-xl font-black text-xl outline-none"
+                placeholder="0.00 €"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00 €"
-                className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-xl outline-none"
               />
               <button
                 type="submit"
-                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black shadow-xl"
+                className="w-full bg-blue-600 text-white py-4 rounded-xl font-black"
               >
                 Générer
               </button>
@@ -439,21 +355,17 @@ export default function InvoicesPage() {
   );
 }
 
-// --- SOUS-COMPOSANTS ---
-function StatWidget({ label, val, color, bg, icon: Icon, suffix = " €" }: any) {
+function StatWidget({ label, val, color, bg, icon: Icon }: any) {
   return (
-    <div className="bg-white p-5 rounded-[2.5rem] border border-gray-100 flex items-center gap-4 shadow-sm hover:translate-x-1 transition-transform">
-      <div className={`p-4 ${bg} ${color} rounded-2xl`}>
+    <div className="bg-white p-5 rounded-3xl border border-gray-100 flex items-center gap-4 shadow-sm">
+      <div className={`p-3 ${bg} ${color} rounded-xl`}>
         <Icon size={20} />
       </div>
       <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+        <div className="text-[10px] font-black text-gray-400 uppercase">
           {label}
-        </p>
-        <p className="text-xl font-black text-gray-900">
-          {val.toLocaleString()}
-          {suffix}
-        </p>
+        </div>
+        <div className="text-xl font-black">{val.toLocaleString()} €</div>
       </div>
     </div>
   );
@@ -467,7 +379,7 @@ function ActionButtons({ inv, updateStatus, deleteInvoice, isClient }: any) {
         <PDFDownloadLink
           document={<InvoicePDF invoice={inv} />}
           fileName={`facture-${inv.id.substring(0, 5)}.pdf`}
-          className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all"
+          className="p-2 bg-gray-50 text-gray-400 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
         >
           {({ loading }) =>
             loading ? (
@@ -481,29 +393,27 @@ function ActionButtons({ inv, updateStatus, deleteInvoice, isClient }: any) {
       <div className="relative">
         <button
           onClick={() => setOpen(!open)}
-          className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition-all"
+          className="p-2 bg-gray-50 text-gray-400 rounded-lg hover:bg-gray-200 transition-all"
         >
           <MoreVertical size={16} />
         </button>
         {open && (
-          <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-2xl z-[100] py-2">
-            {inv.status !== "Payée" && (
-              <button
-                onClick={() => {
-                  updateStatus(inv.id, "Payée");
-                  setOpen(false);
-                }}
-                className="w-full text-left px-4 py-3 text-sm text-green-600 hover:bg-green-50 font-bold transition-colors"
-              >
-                Marquer payée
-              </button>
-            )}
+          <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-50 py-2">
+            <button
+              onClick={() => {
+                updateStatus(inv.id, "Payée");
+                setOpen(false);
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-green-600 font-bold hover:bg-green-50 transition-colors"
+            >
+              Marquer payée
+            </button>
             <button
               onClick={() => {
                 deleteInvoice(inv.id);
                 setOpen(false);
               }}
-              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold transition-colors"
+              className="w-full text-left px-4 py-2 text-sm text-red-600 font-bold hover:bg-red-50 transition-colors"
             >
               Supprimer
             </button>
