@@ -12,19 +12,15 @@ import {
   Search,
   TrendingUp,
   AlertCircle,
-  FileSpreadsheet,
   BarChart3,
   Printer,
   Target,
 } from "lucide-react";
 
-// --- IMPORTS DYNAMIQUES (Syntaxe unique et correcte) ---
+// --- IMPORTS DYNAMIQUES ---
 const PDFDownloadLink = dynamic(
   () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
-  {
-    ssr: false,
-    loading: () => <Loader2 className="animate-spin" size={18} />,
-  },
+  { ssr: false, loading: () => <Loader2 className="animate-spin" size={18} /> },
 );
 
 const InvoicePDF = dynamic(
@@ -44,14 +40,12 @@ export default function InvoicesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
   // Filtres
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [periodFilter, setPeriodFilter] = useState("Mois");
-  const [sortBy, setSortBy] = useState("recent");
-  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -74,7 +68,22 @@ export default function InvoicesPage() {
     }
   };
 
-  // --- CALCULS STATS & PROGRESSION ---
+  const updateStatus = async (id: string, s: string) => {
+    const res = await fetch(`/api/invoices/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: s }),
+    });
+    if (res.ok) fetchData();
+  };
+
+  const deleteInvoice = async (id: string) => {
+    if (!confirm("Supprimer définitivement cette facture ?")) return;
+    const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
+    if (res.ok) fetchData();
+  };
+
+  // --- LOGIQUE METIER (Stats & Filtrage) ---
   const { stats, chartData, monthlyProgress, processedInvoices } =
     useMemo(() => {
       const now = new Date();
@@ -89,7 +98,7 @@ export default function InvoicesPage() {
       let currentMonthTotal = 0;
       let lastMonthTotal = 0;
 
-      // 1. Filtrage et Tri
+      // 1. Filtrage
       const filtered = invoices
         .filter((inv) => {
           const invDate = new Date(inv.created_at);
@@ -118,7 +127,7 @@ export default function InvoicesPage() {
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
 
-      // 2. Calcul des totaux pour la progression
+      // 2. Progression
       invoices.forEach((inv) => {
         const d = new Date(inv.created_at);
         if (d.getMonth() === currentMonth && d.getFullYear() === currentYear)
@@ -127,7 +136,7 @@ export default function InvoicesPage() {
           lastMonthTotal += Number(inv.amount);
       });
 
-      // 3. Graphique 6 mois
+      // 3. Graphique
       const last6 = Array.from({ length: 6 }, (_, i) => {
         const d = new Date();
         d.setMonth(d.getMonth() - i);
@@ -174,21 +183,6 @@ export default function InvoicesPage() {
         },
       };
     }, [invoices, searchTerm, statusFilter, periodFilter]);
-
-  const updateStatus = async (id: string, s: string) => {
-    const res = await fetch(`/api/invoices/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: s }),
-    });
-    if (res.ok) fetchData();
-  };
-
-  const deleteInvoice = async (id: string) => {
-    if (!confirm("Supprimer définitivement ?")) return;
-    const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
-    if (res.ok) fetchData();
-  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-24 px-4 md:px-6 animate-in fade-in duration-500">
@@ -283,13 +277,13 @@ export default function InvoicesPage() {
             placeholder="Rechercher..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-4 bg-gray-50 border-none rounded-2xl outline-none"
+            className="w-full pl-11 pr-4 py-4 bg-gray-50 border-none rounded-2xl outline-none font-medium"
           />
         </div>
         <select
           value={periodFilter}
           onChange={(e) => setPeriodFilter(e.target.value)}
-          className="px-6 py-4 bg-gray-50 border-none rounded-2xl font-bold text-blue-600 outline-none"
+          className="px-6 py-4 bg-gray-50 border-none rounded-2xl font-bold text-blue-600 outline-none cursor-pointer"
         >
           <option value="Mois">Ce mois</option>
           <option value="DernierMois">Mois dernier</option>
@@ -326,7 +320,7 @@ export default function InvoicesPage() {
           <thead className="bg-gray-50/50 border-b border-gray-50">
             <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
               <th className="px-8 py-5">Client</th>
-              <th className="px-8 py-5">Montant</th>
+              <th className="px-8 py-5">Montant TTC</th>
               <th className="px-8 py-5">Statut</th>
               <th className="px-8 py-5 text-right">Actions</th>
             </tr>
@@ -339,10 +333,10 @@ export default function InvoicesPage() {
               >
                 <td className="px-8 py-6">
                   <p className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    {inv.clients?.name}
+                    {inv.clients?.name || "Client"}
                   </p>
-                  <p className="text-[10px] text-gray-400 font-mono">
-                    #{inv.id.substring(0, 8).toUpperCase()}
+                  <p className="text-[10px] text-gray-400 font-mono uppercase tracking-tighter">
+                    ID: {inv.id.substring(0, 8)}
                   </p>
                 </td>
                 <td className="px-8 py-6 text-xl font-black text-gray-900">
@@ -367,6 +361,11 @@ export default function InvoicesPage() {
             ))}
           </tbody>
         </table>
+        {processedInvoices.length === 0 && !loading && (
+          <div className="p-20 text-center text-gray-400 font-bold">
+            Aucune facture trouvée.
+          </div>
+        )}
       </div>
 
       {/* Modal Création */}
@@ -379,7 +378,7 @@ export default function InvoicesPage() {
               </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-full"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X size={24} />
               </button>
@@ -494,7 +493,7 @@ function ActionButtons({ inv, updateStatus, deleteInvoice, isClient }: any) {
                   updateStatus(inv.id, "Payée");
                   setOpen(false);
                 }}
-                className="w-full text-left px-4 py-3 text-sm text-green-600 hover:bg-green-50 font-bold"
+                className="w-full text-left px-4 py-3 text-sm text-green-600 hover:bg-green-50 font-bold transition-colors"
               >
                 Marquer payée
               </button>
@@ -504,7 +503,7 @@ function ActionButtons({ inv, updateStatus, deleteInvoice, isClient }: any) {
                 deleteInvoice(inv.id);
                 setOpen(false);
               }}
-              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold"
+              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold transition-colors"
             >
               Supprimer
             </button>
