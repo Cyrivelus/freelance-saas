@@ -15,18 +15,23 @@ import {
   FileSpreadsheet,
   BarChart3,
   Printer,
+  Target,
 } from "lucide-react";
 
-// Imports dynamiques
+// --- IMPORTS DYNAMIQUES CORRIGÉS ---
 const PDFDownloadLink = dynamic(
   () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
-  { ssr: false, loading: () => <Loader2 className="animate-spin" size={18} /> },
+  {
+    ssr: false,
+    loading: () => <Loader2 className="animate-spin" size={18} />,
+  },
 );
+
 const InvoicePDF = dynamic(
   () => import("@/components/InvoicePDF").then((mod) => mod.InvoicePDF),
   { ssr: false },
 );
-// Note: Créez ce composant pour gérer plusieurs pages de factures
+
 const BulkInvoicePDF = dynamic(
   () => import("@/components/BulkInvoicePDF").then((mod) => mod.BulkInvoicePDF),
   { ssr: false },
@@ -44,7 +49,7 @@ export default function InvoicesPage() {
   // Filtres
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
-  const [periodFilter, setPeriodFilter] = useState("Mois"); // Par défaut sur le mois en cours
+  const [periodFilter, setPeriodFilter] = useState("Mois");
   const [sortBy, setSortBy] = useState("recent");
   const [isClient, setIsClient] = useState(false);
 
@@ -63,13 +68,12 @@ export default function InvoicesPage() {
       if (invRes.ok) setInvoices(await invRes.json());
       if (cliRes.ok) setClients(await cliRes.json());
     } catch (error) {
-      console.error("Erreur fetch:", error);
+      console.error("Fetch error:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // --- LOGIQUE DE FILTRAGE AMÉLIORÉE ---
   const processedInvoices = useMemo(() => {
     const now = new Date();
     return invoices
@@ -95,7 +99,6 @@ export default function InvoicesPage() {
         } else if (periodFilter === "Annee") {
           matchesPeriod = invDate.getFullYear() === now.getFullYear();
         }
-
         return matchesSearch && matchesStatus && matchesPeriod;
       })
       .sort((a, b) => {
@@ -108,27 +111,34 @@ export default function InvoicesPage() {
       });
   }, [invoices, searchTerm, statusFilter, periodFilter, sortBy]);
 
-  // --- EXPORT CSV ---
-  const exportToCSV = () => {
-    const headers = ["Date", "Client", "Montant (€)", "Statut", "Reference"];
-    const rows = processedInvoices.map((inv) => [
-      new Date(inv.created_at).toLocaleDateString("fr-FR"),
-      inv.clients?.name || "Client inconnu",
-      inv.amount,
-      inv.status,
-      inv.id.substring(0, 8).toUpperCase(),
-    ]);
-    const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `compta-${periodFilter}-${new Date().toLocaleDateString()}.csv`;
-    link.click();
-  };
+  const { stats, chartData, monthlyProgress } = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-  // --- STATS ---
-  const { stats, chartData } = useMemo(() => {
+    const lastMonthDate = new Date();
+    lastMonthDate.setMonth(now.getMonth() - 1);
+    const lastMonth = lastMonthDate.getMonth();
+    const lastYear = lastMonthDate.getFullYear();
+
+    let currentMonthTotal = 0;
+    let lastMonthTotal = 0;
+
     const paid = invoices.filter((inv) => inv.status === "Payée");
+
+    // Calcul pour la barre de progression
+    invoices.forEach((inv) => {
+      const d = new Date(inv.created_at);
+      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear)
+        currentMonthTotal += Number(inv.amount);
+      if (d.getMonth() === lastMonth && d.getFullYear() === lastYear)
+        lastMonthTotal += Number(inv.amount);
+    });
+
+    const progressPercent =
+      lastMonthTotal > 0 ? (currentMonthTotal / lastMonthTotal) * 100 : 100;
+
+    // Données graphique
     const last6Months = Array.from({ length: 6 }, (_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
@@ -157,6 +167,15 @@ export default function InvoicesPage() {
         countPending: invoices.filter((i) => i.status === "En attente").length,
       },
       chartData: last6Months,
+      monthlyProgress: {
+        current: currentMonthTotal,
+        last: lastMonthTotal,
+        percent: Math.min(progressPercent, 100),
+        growth:
+          lastMonthTotal > 0
+            ? ((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100
+            : 0,
+      },
     };
   }, [invoices]);
 
@@ -181,6 +200,23 @@ export default function InvoicesPage() {
     }
   };
 
+  const exportToCSV = () => {
+    const headers = ["Date", "Client", "Montant (€)", "Statut", "Reference"];
+    const rows = processedInvoices.map((inv) => [
+      new Date(inv.created_at).toLocaleDateString("fr-FR"),
+      inv.clients?.name || "Client inconnu",
+      inv.amount,
+      inv.status,
+      inv.id.substring(0, 8).toUpperCase(),
+    ]);
+    const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `export-${periodFilter}-${new Date().getTime()}.csv`;
+    link.click();
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-24 px-4 md:px-6 animate-in fade-in duration-500">
       {/* Header */}
@@ -190,7 +226,7 @@ export default function InvoicesPage() {
             Dashboard Facturation
           </h1>
           <p className="text-sm text-gray-500 font-medium">
-            Suivi financier et export groupé
+            Gestion et exportations PDF/CSV
           </p>
         </div>
         <button
@@ -201,43 +237,54 @@ export default function InvoicesPage() {
         </button>
       </div>
 
-      {/* Graphique & Widgets */}
+      {/* Widgets Stats & Objectifs */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm">
-          <div className="flex items-center gap-2 mb-6">
-            <BarChart3 size={18} className="text-blue-600" />
-            <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
-              Revenus 6 derniers mois
-            </h3>
-          </div>
-          <div className="h-40 flex items-end justify-between gap-2 px-2">
-            {chartData.map((d, i) => (
-              <div
-                key={i}
-                className="flex-1 flex flex-col items-center gap-2 group"
-              >
-                <div
-                  className="w-full bg-blue-100 rounded-lg group-hover:bg-blue-500 transition-all duration-300 relative"
-                  style={{
-                    height: `${Math.max((d.total / (Math.max(...chartData.map((x) => x.total)) || 1)) * 100, 5)}%`,
-                  }}
-                >
-                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity font-bold">
-                    {d.total.toLocaleString()}€
-                  </span>
-                </div>
-                <span className="text-[10px] font-bold text-gray-400 uppercase">
-                  {d.month}
-                </span>
+        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Target size={18} className="text-blue-600" />
+                <h3 className="font-black text-gray-900 uppercase text-xs tracking-widest">
+                  Objectif Mensuel
+                </h3>
               </div>
-            ))}
+              <p className="text-sm text-gray-500 font-medium">
+                Basé sur le CA du mois dernier (
+                {monthlyProgress.last.toLocaleString()} €)
+              </p>
+            </div>
+            <div className="text-right">
+              <span
+                className={`text-sm font-black ${monthlyProgress.growth >= 0 ? "text-green-600" : "text-red-600"}`}
+              >
+                {monthlyProgress.growth >= 0 ? "+" : ""}
+                {monthlyProgress.growth.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-end">
+              <span className="text-3xl font-black text-gray-900">
+                {monthlyProgress.current.toLocaleString()} €
+              </span>
+              <span className="text-sm font-bold text-gray-400">
+                Objectif : {monthlyProgress.last.toLocaleString()} €
+              </span>
+            </div>
+            <div className="h-4 w-full bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-600 rounded-full transition-all duration-1000 ease-out shadow-lg shadow-blue-200"
+                style={{ width: `${monthlyProgress.percent}%` }}
+              />
+            </div>
           </div>
         </div>
 
         <div className="space-y-4">
           {[
             {
-              label: "Encaissé",
+              label: "Encaissé Total",
               val: stats.totalPaid,
               color: "text-green-600",
               bg: "bg-green-50",
@@ -251,17 +298,17 @@ export default function InvoicesPage() {
               icon: Clock,
             },
             {
-              label: "Alertes",
+              label: "Docs à traiter",
               val: stats.countPending,
               color: "text-red-600",
               bg: "bg-red-50",
               icon: AlertCircle,
-              suffix: " docs",
+              suffix: " alertes",
             },
           ].map((s, i) => (
             <div
               key={i}
-              className="bg-white p-5 rounded-[2.5rem] border border-gray-100 flex items-center gap-4 shadow-sm"
+              className="bg-white p-5 rounded-[2.5rem] border border-gray-100 flex items-center gap-4 shadow-sm hover:translate-x-1 transition-transform"
             >
               <div className={`p-4 ${s.bg} ${s.color} rounded-2xl`}>
                 <s.icon size={20} />
@@ -280,7 +327,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* Barre d'outils avec FILTRES ET BOUTONS GROUPÉS */}
+      {/* Toolbar */}
       <div className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
         <div className="relative w-full">
           <Search
@@ -289,7 +336,7 @@ export default function InvoicesPage() {
           />
           <input
             type="text"
-            placeholder="Chercher un client..."
+            placeholder="Rechercher un client..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-11 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
@@ -300,7 +347,7 @@ export default function InvoicesPage() {
           <select
             value={periodFilter}
             onChange={(e) => setPeriodFilter(e.target.value)}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-gray-50 border-none rounded-xl font-bold text-sm text-blue-600 outline-none"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-gray-50 border-none rounded-xl font-bold text-sm text-blue-600 outline-none appearance-none cursor-pointer"
           >
             <option value="Tous">Toutes les périodes</option>
             <option value="Mois">Mois en cours</option>
@@ -311,7 +358,7 @@ export default function InvoicesPage() {
           <div className="flex gap-2 w-full lg:w-auto">
             <button
               onClick={exportToCSV}
-              className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-black text-xs hover:bg-green-100 transition-colors"
+              className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-black text-xs hover:bg-green-100 transition-colors"
             >
               <FileSpreadsheet size={16} /> CSV
             </button>
@@ -321,11 +368,11 @@ export default function InvoicesPage() {
                 document={
                   <BulkInvoicePDF
                     invoices={processedInvoices}
-                    title={`Factures ${periodFilter}`}
+                    title={`Export - ${periodFilter}`}
                   />
                 }
-                fileName={`export-pdf-${periodFilter}.pdf`}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-blue-50 text-blue-700 rounded-xl font-black text-xs hover:bg-blue-100 transition-colors"
+                fileName={`export-factures-${new Date().getTime()}.pdf`}
+                className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-blue-50 text-blue-700 rounded-xl font-black text-xs hover:bg-blue-100 transition-colors"
               >
                 {({ loading }) => (
                   <>
@@ -343,7 +390,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {/* Liste des factures */}
+      {/* Table */}
       <div className="min-h-[300px]">
         {loading ? (
           <div className="flex justify-center p-20">
@@ -364,14 +411,14 @@ export default function InvoicesPage() {
                 {processedInvoices.map((inv) => (
                   <tr
                     key={inv.id}
-                    className="hover:bg-blue-50/20 transition-colors"
+                    className="hover:bg-blue-50/20 transition-colors group"
                   >
                     <td className="px-8 py-6">
-                      <p className="font-bold text-gray-900">
+                      <p className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
                         {inv.clients?.name || "Client"}
                       </p>
-                      <p className="text-[10px] text-gray-400 font-mono uppercase">
-                        Réf: {inv.id.substring(0, 8)}
+                      <p className="text-[10px] text-gray-400 font-mono tracking-tighter">
+                        ID: {inv.id.substring(0, 8).toUpperCase()}
                       </p>
                     </td>
                     <td className="px-8 py-6 text-xl font-black text-gray-900">
@@ -402,23 +449,23 @@ export default function InvoicesPage() {
         ) : (
           <div className="p-20 text-center bg-gray-50 rounded-[2.5rem] border-2 border-dashed border-gray-200">
             <p className="text-gray-400 font-bold">
-              Aucune facture trouvée pour cette sélection
+              Aucune facture trouvée pour cette sélection.
             </p>
           </div>
         )}
       </div>
 
-      {/* Modal de création (simplicité conservée) */}
+      {/* Modal Création */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl">
+          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-300">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-black text-gray-900">
                 Nouvelle Facture
               </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-full"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X size={24} />
               </button>
@@ -441,33 +488,43 @@ export default function InvoicesPage() {
               }}
               className="space-y-6"
             >
-              <select
-                required
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold"
-              >
-                <option value="">Sélectionner un client...</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                required
-                type="number"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Montant"
-                className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-xl"
-              />
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">
+                  Client
+                </label>
+                <select
+                  required
+                  value={selectedClientId}
+                  onChange={(e) => setSelectedClientId(e.target.value)}
+                  className="w-full p-4 bg-gray-50 border-none rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                >
+                  <option value="">Choisir un client...</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase ml-2">
+                  Montant de la prestation
+                </label>
+                <input
+                  required
+                  type="number"
+                  step="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00 €"
+                  className="w-full p-4 bg-gray-50 border-none rounded-2xl font-black text-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                />
+              </div>
               <button
                 type="submit"
-                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black"
+                className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all"
               >
-                Créer Document
+                Générer la facture
               </button>
             </form>
           </div>
@@ -491,7 +548,7 @@ function ActionButtons({
         <PDFDownloadLink
           document={<InvoicePDF invoice={inv} />}
           fileName={`facture-${inv.id.substring(0, 5)}.pdf`}
-          className="p-3 bg-gray-50 text-gray-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all"
+          className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
         >
           {({ loading }) =>
             loading ? (
@@ -505,25 +562,25 @@ function ActionButtons({
       <div className="relative">
         <button
           onClick={() => setActiveMenu(activeMenu === inv.id ? null : inv.id)}
-          className="p-3 bg-gray-50 text-gray-600 rounded-xl hover:bg-gray-100 transition-all"
+          className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition-all shadow-sm"
         >
           <MoreVertical size={16} />
         </button>
         {activeMenu === inv.id && (
-          <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-[100] py-2">
+          <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-2xl z-[100] py-2 animate-in slide-in-from-top-2 duration-200">
             {inv.status !== "Payée" && (
               <button
                 onClick={() => updateStatus(inv.id, "Payée")}
-                className="w-full text-left px-4 py-3 text-sm text-green-600 hover:bg-green-50 font-bold"
+                className="w-full text-left px-4 py-3 text-sm text-green-600 hover:bg-green-50 font-bold transition-colors"
               >
-                Valider paiement
+                Marquer comme payée
               </button>
             )}
             <button
               onClick={() => deleteInvoice(inv.id)}
-              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold"
+              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 font-bold transition-colors"
             >
-              Supprimer
+              Supprimer définitivement
             </button>
           </div>
         )}
