@@ -89,24 +89,6 @@ export default function InvoicesPage() {
     if (res.ok) fetchData();
   };
 
-  // --- EXPORT CSV ---
-  const exportToCSV = () => {
-    const headers = ["Date", "Client", "Montant (€)", "Statut", "Reference"];
-    const rows = processedInvoices.map((inv) => [
-      new Date(inv.created_at).toLocaleDateString("fr-FR"),
-      inv.clients?.name || "Client inconnu",
-      inv.amount,
-      inv.status,
-      inv.id.substring(0, 8).toUpperCase(),
-    ]);
-    const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `export-${periodFilter}-${Date.now()}.csv`;
-    link.click();
-  };
-
   // --- LOGIQUE MÉTIER ---
   const { stats, monthlyProgress, processedInvoices } = useMemo(() => {
     const now = new Date();
@@ -183,6 +165,24 @@ export default function InvoicesPage() {
       },
     };
   }, [invoices, searchTerm, statusFilter, periodFilter]);
+
+  // --- EXPORT CSV --- (déclaré après processedInvoices)
+  const exportToCSV = () => {
+    const headers = ["Date", "Client", "Montant (€)", "Statut", "Reference"];
+    const rows = processedInvoices.map((inv) => [
+      new Date(inv.created_at).toLocaleDateString("fr-FR"),
+      inv.clients?.name || "Client inconnu",
+      inv.amount,
+      inv.status,
+      inv.id.substring(0, 8).toUpperCase(),
+    ]);
+    const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `export-${periodFilter}-${Date.now()}.csv`;
+    link.click();
+  };
 
   // ─────────────────────────────────────────────────────────────
   // RENDU
