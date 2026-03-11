@@ -1,23 +1,50 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { NextRequest, NextResponse } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const token = request.cookies.get("auth-token");
-  const { pathname } = request.nextUrl;
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-  // Routes protégées qui demandent une connexion
-  const protectedRoutes = ["/dashboard", "/profile"];
+  // 1. Récupérer le token (la session)
+  const token = await getToken({ 
+    req, 
+    secret: process.env.NEXTAUTH_SECRET 
+  });
 
-  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !token) {
-    const loginUrl = new URL("/login", request.url);
+  // 2. Définir les types de routes
+  const isAuthPage = pathname.startsWith("/login");
+  const isApiAuthRoute = pathname.startsWith("/api/auth");
+  const isPublicFile = pathname.startsWith("/_next") || pathname.includes("."); 
+  const isLandingPage = pathname === "/"; // Si votre accueil est public
+
+  // 3. LOGIQUE DE REDIRECTION
+
+  // CAS A : L'utilisateur est connecté et essaie d'aller sur /login
+  if (token && isAuthPage) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+
+  // CAS B : L'utilisateur n'est PAS connecté et essaie d'accéder à une zone privée
+  // On protège tout SAUF le login, l'API auth, les fichiers et la landing page
+  if (!token && !isAuthPage && !isApiAuthRoute && !isPublicFile && !isLandingPage) {
+    const loginUrl = new URL("/login", req.url);
+    // Optionnel : On garde en mémoire où il voulait aller
+    loginUrl.searchParams.set("callbackUrl", pathname); 
     return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
 }
 
-// UNE SEULE FOIS : La configuration du matcher
+// Configuration du Matcher (très important pour les performances)
 export const config = {
-  // On exclut l'API, les fichiers statiques et les images de la vérification
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    /*
+     * On applique le middleware sur tout sauf :
+     * - api (certaines routes api peuvent être publiques)
+     * - _next/static (fichiers compilés)
+     * - _next/image (optimisation d'images)
+     * - tous les fichiers avec extension (png, svg, etc.) dans public/
+     */
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)",
+  ],
 };

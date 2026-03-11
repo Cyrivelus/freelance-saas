@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard,
   Users,
@@ -17,16 +18,20 @@ export default function Sidebar({
   closeMobileMenu?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "?";
 
   const handleLogout = async () => {
-    // Si vous utilisez un système de cookies simple, on les efface ici
-    // Pour l'instant, on simule une déconnexion propre
-    localStorage.clear();
-    sessionStorage.clear();
-
-    // Redirection forcée vers la page de login ou d'accueil
-    window.location.href = "/";
+    await signOut({ callbackUrl: "/login" });
   };
 
   const menuItems = [
@@ -48,7 +53,28 @@ export default function Sidebar({
         </span>
       </div>
 
-      {/* Navigation principale */}
+      {/* Profil utilisateur Google */}
+      <div className="flex items-center gap-3 mb-8 p-3 bg-gray-50 rounded-2xl border border-gray-100">
+        {user?.image ? (
+          <img
+            src={user.image}
+            alt={user.name ?? "avatar"}
+            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            {initials}
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-gray-900 truncate">
+            {user?.name ?? "Utilisateur"}
+          </p>
+          <p className="text-xs text-gray-400 truncate">{user?.email ?? ""}</p>
+        </div>
+      </div>
+
+      {/* Navigation */}
       <nav className="flex-1 space-y-1">
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
@@ -70,7 +96,7 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* Carte Plan Pro (Mobile friendly) */}
+      {/* Carte Plan Pro */}
       <div className="mb-6 p-4 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl text-white">
         <p className="text-xs font-bold uppercase opacity-80 mb-1">Plan Pro</p>
         <p className="text-lg font-black mb-3">
@@ -81,7 +107,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      {/* Bouton Déconnexion */}
+      {/* Déconnexion */}
       <div className="pt-4 border-t border-gray-100">
         <button
           onClick={handleLogout}

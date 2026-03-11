@@ -1,5 +1,10 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 
+// ─────────────────────────────────────────────────────────────
+// RÈGLE @react-pdf/renderer :
+//   ❌  border: 1          → propriété CSS web, non supportée
+//   ✅  borderWidth: 1     → syntaxe correcte react-pdf
+// ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   page: {
     padding: 40,
@@ -18,7 +23,6 @@ const styles = StyleSheet.create({
     color: "#2563eb",
     marginBottom: 5,
   },
-  section: { marginBottom: 20 },
   label: {
     fontSize: 9,
     color: "#6b7280",
@@ -28,41 +32,57 @@ const styles = StyleSheet.create({
   },
   value: { fontSize: 11, fontWeight: "bold" },
 
-  // Table styles
+  // Table
   table: {
-    display: "flex",
     width: "auto",
     marginTop: 20,
-    borderStyle: "solid",
+    borderStyle: "solid", // ✅ valide avec borderWidth
+    borderWidth: 1, // ✅ remplace "border: 1"
     borderColor: "#e5e7eb",
-    borderBottomWidth: 1,
   },
-  tableRow: { flexDirection: "row", backgroundColor: "#f9fafb", padding: 8 },
-  tableHeader: { fontSize: 10, fontWeight: "bold", color: "#374151" },
+  tableRow: {
+    flexDirection: "row",
+    backgroundColor: "#f9fafb",
+    padding: 8,
+  },
+  tableHeader: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#374151",
+  },
 
-  // Footer & Legal
-  legalText: { fontSize: 8, color: "#9ca3af", marginTop: 4, lineHeight: 1.4 },
+  // IBAN
   ibanBox: {
     marginTop: 20,
     padding: 12,
-    border: 1,
+    borderWidth: 1, // ✅ remplace "border: 1"
+    borderStyle: "solid",
     borderColor: "#e5e7eb",
     borderRadius: 6,
     backgroundColor: "#f8fafc",
   },
+
+  // Legal
+  legalText: {
+    fontSize: 8,
+    color: "#9ca3af",
+    marginTop: 4,
+    lineHeight: 1.4,
+  },
+
+  // Footer
   footer: {
     position: "absolute",
     bottom: 40,
     left: 40,
     right: 40,
-    borderTopWidth: 1,
-    borderColor: "#e5e7eb",
+    borderTopWidth: 1, // ✅ déjà correct
+    borderTopColor: "#e5e7eb",
     paddingTop: 15,
   },
 });
 
 export const InvoicePDF = ({ invoice }: { invoice: any }) => {
-  // Calcul de la date d'échéance (Date du jour + 30 jours)
   const dateEmission = new Date();
   const dateEcheance = new Date();
   dateEcheance.setDate(dateEmission.getDate() + 30);
@@ -70,7 +90,7 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* En-tête : Emetteur */}
+        {/* En-tête */}
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>FACTURE</Text>
@@ -82,13 +102,15 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
             <Text style={{ fontWeight: "bold", fontSize: 13 }}>
               Jean Dupont
             </Text>
-            <Text>SIRET : 123 456 789 00012</Text>
-            <Text>123 Avenue du Freelance, 75000 Paris</Text>
-            <Text>contact@jeandupont.fr</Text>
+            <Text style={{ fontSize: 10 }}>SIRET : 123 456 789 00012</Text>
+            <Text style={{ fontSize: 10 }}>
+              123 Avenue du Freelance, 75000 Paris
+            </Text>
+            <Text style={{ fontSize: 10 }}>contact@jeandupont.fr</Text>
           </View>
         </View>
 
-        {/* Infos Client et Dates */}
+        {/* Client + Dates */}
         <View
           style={{
             flexDirection: "row",
@@ -121,7 +143,7 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
           </View>
         </View>
 
-        {/* Tableau des prestations */}
+        {/* Tableau prestations */}
         <View style={styles.table}>
           <View style={styles.tableRow}>
             <Text style={[styles.tableHeader, { width: "70%" }]}>
@@ -138,10 +160,10 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
               flexDirection: "row",
               padding: 12,
               borderTopWidth: 1,
-              borderColor: "#e5e7eb",
+              borderTopColor: "#e5e7eb", // ✅ séparé de borderColor global
             }}
           >
-            <Text style={{ width: "70%" }}>
+            <Text style={{ width: "70%", fontSize: 11 }}>
               Prestation de services (Forfait)
             </Text>
             <Text
@@ -152,7 +174,7 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
           </View>
         </View>
 
-        {/* Total et Coordonnées Bancaires */}
+        {/* Total + IBAN */}
         <View
           style={{
             flexDirection: "row",
@@ -179,7 +201,6 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
               backgroundColor: "#2563eb",
               padding: 15,
               borderRadius: 8,
-              height: 70,
             }}
           >
             <Text
@@ -205,10 +226,15 @@ export const InvoicePDF = ({ invoice }: { invoice: any }) => {
           </View>
         </View>
 
-        {/* Footer avec mentions légales */}
+        {/* Footer légal */}
         <View style={styles.footer}>
           <Text
-            style={{ textAlign: "center", fontWeight: "bold", marginBottom: 5 }}
+            style={{
+              textAlign: "center",
+              fontWeight: "bold",
+              marginBottom: 5,
+              fontSize: 10,
+            }}
           >
             Merci de votre confiance !
           </Text>

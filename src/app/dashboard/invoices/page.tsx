@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import {
   Plus,
@@ -17,23 +17,24 @@ import {
   Target,
 } from "lucide-react";
 
-// --- IMPORTS DYNAMIQUES ---
-const PDFDownloadLink = dynamic(
-  () => import("@react-pdf/renderer").then((mod) => mod.PDFDownloadLink),
+// ─────────────────────────────────────────────────────────────
+// IMPORTS DYNAMIQUES
+// PDFDownloadLink doit être importé via un wrapper pour éviter
+// l'erreur "su is not a function" avec Turbopack / Next.js 15+
+// ─────────────────────────────────────────────────────────────
+const BulkPDFButton = dynamic(
+  () => import("@/components/BulkPDFButton").then((mod) => mod.BulkPDFButton),
   {
     ssr: false,
-    loading: () => <Loader2 className="animate-spin" size={18} />,
+    loading: () => (
+      <button
+        disabled
+        className="flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-400 rounded-xl text-xs font-black cursor-not-allowed"
+      >
+        <Loader2 size={16} className="animate-spin" />
+      </button>
+    ),
   },
-);
-
-const InvoicePDF = dynamic(
-  () => import("@/components/InvoicePDF").then((mod) => mod.InvoicePDF),
-  { ssr: false },
-);
-
-const BulkInvoicePDF = dynamic(
-  () => import("@/components/BulkInvoicePDF").then((mod) => mod.BulkInvoicePDF),
-  { ssr: false },
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -50,15 +51,15 @@ export default function InvoicesPage() {
 
   // Filtres
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Tous");
-  const [periodFilter, setPeriodFilter] = useState("Mois");
+  const [statusFilter] = useState("Tous");
+  const [periodFilter, setPeriodFilter] = useState("Tous");
 
   useEffect(() => {
     setIsClient(true);
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [invRes, cliRes] = await Promise.all([
@@ -72,7 +73,7 @@ export default function InvoicesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const updateStatus = async (id: string, s: string) => {
     const res = await fetch(`/api/invoices/${id}`, {
@@ -89,7 +90,7 @@ export default function InvoicesPage() {
     if (res.ok) fetchData();
   };
 
-  // --- LOGIQUE MÉTIER ---
+  // ── Logique métier ──────────────────────────────────────────
   const { stats, monthlyProgress, processedInvoices } = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -166,7 +167,7 @@ export default function InvoicesPage() {
     };
   }, [invoices, searchTerm, statusFilter, periodFilter]);
 
-  // --- EXPORT CSV --- (déclaré après processedInvoices)
+  // ── Export CSV (après processedInvoices) ────────────────────
   const exportToCSV = () => {
     const headers = ["Date", "Client", "Montant (€)", "Statut", "Reference"];
     const rows = processedInvoices.map((inv) => [
@@ -249,7 +250,7 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-        {/* Widgets stats */}
+        {/* Widgets */}
         <div className="space-y-4">
           <StatWidget
             label="Encaissé Total"
@@ -295,7 +296,7 @@ export default function InvoicesPage() {
           <select
             value={periodFilter}
             onChange={(e) => setPeriodFilter(e.target.value)}
-            className="flex-1 min-w-[150px] px-4 py-3 bg-gray-50 border-none rounded-xl font-bold text-sm text-blue-600 outline-none appearance-none cursor-pointer"
+            className="flex-1 min-w-[150px] px-4 py-3 bg-gray-50 border-none rounded-xl font-bold text-sm text-blue-600 outline-none cursor-pointer"
           >
             <option value="Tous">Toutes les périodes</option>
             <option value="Mois">Mois en cours</option>
@@ -309,28 +310,17 @@ export default function InvoicesPage() {
             >
               <FileSpreadsheet size={16} /> CSV
             </button>
+
+            {/*
+              BulkPDFButton est un wrapper client dédié.
+              Il importe PDFDownloadLink + BulkInvoicePDF en lazy
+              pour contourner l'erreur Turbopack "su is not a function".
+            */}
             {isClient && processedInvoices.length > 0 && (
-              <PDFDownloadLink
-                document={
-                  <BulkInvoicePDF
-                    invoices={processedInvoices}
-                    title={`Export - ${periodFilter}`}
-                  />
-                }
-                fileName={`export-factures-${Date.now()}.pdf`}
-                className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-blue-50 text-blue-700 rounded-xl font-black text-xs hover:bg-blue-100 transition-colors"
-              >
-                {({ loading: pdfLoading }) => (
-                  <>
-                    {pdfLoading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Printer size={16} />
-                    )}
-                    PDF GROUPÉ ({processedInvoices.length})
-                  </>
-                )}
-              </PDFDownloadLink>
+              <BulkPDFButton
+                invoices={processedInvoices}
+                periodFilter={periodFilter}
+              />
             )}
           </div>
         </div>
@@ -386,7 +376,6 @@ export default function InvoicesPage() {
                         inv={inv}
                         updateStatus={updateStatus}
                         deleteInvoice={deleteInvoice}
-                        isClient={isClient}
                       />
                     </td>
                   </tr>
@@ -520,26 +509,50 @@ function StatWidget({
   );
 }
 
-function ActionButtons({ inv, updateStatus, deleteInvoice, isClient }: any) {
+function ActionButtons({ inv, updateStatus, deleteInvoice }: any) {
   const [open, setOpen] = useState(false);
+  const [PDFLink, setPDFLink] = useState<any>(null);
+  const [InvoicePDFComp, setInvoicePDFComp] = useState<any>(null);
+
+  useEffect(() => {
+    // Import direct au montage — contourne l'erreur Turbopack
+    // "su is not a function" causée par dynamic() sur PDFDownloadLink
+    Promise.all([
+      import("@react-pdf/renderer"),
+      import("@/components/InvoicePDF"),
+    ])
+      .then(([pdfMod, invMod]) => {
+        setPDFLink(() => pdfMod.PDFDownloadLink);
+        setInvoicePDFComp(() => invMod.InvoicePDF ?? (invMod as any).default);
+      })
+      .catch(console.error);
+  }, []);
 
   return (
     <div className="flex items-center justify-end gap-2">
-      {isClient && (
-        <PDFDownloadLink
-          document={<InvoicePDF invoice={inv} />}
+      {PDFLink && InvoicePDFComp ? (
+        <PDFLink
+          document={<InvoicePDFComp invoice={inv} />}
           fileName={`facture-${inv.id.substring(0, 5)}.pdf`}
           className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
         >
-          {({ loading: pdfLoading }) =>
-            pdfLoading ? (
+          {({ loading: l }: { loading: boolean }) =>
+            l ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <Download size={16} />
             )
           }
-        </PDFDownloadLink>
+        </PDFLink>
+      ) : (
+        <button
+          disabled
+          className="p-3 bg-gray-50 text-gray-200 rounded-xl shadow-sm cursor-not-allowed"
+        >
+          <Download size={16} />
+        </button>
       )}
+
       <div className="relative">
         <button
           onClick={() => setOpen(!open)}
