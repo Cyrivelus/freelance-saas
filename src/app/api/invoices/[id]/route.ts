@@ -1,28 +1,41 @@
+// src/app/api/invoices/[id]/route.ts
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { createClient } from "@supabase/supabase-js";
 
+// ✅ service_role → bypasse le RLS, jamais exposé côté client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-// ─────────────────────────────────────────────────────────────
-// PATCH : Modifier le statut d'une facture
-// Next.js 15+ : params est une Promise, il faut l'await
-// ─────────────────────────────────────────────────────────────
+async function getUserId(): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return null;
+  const { data } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", session.user.email)
+    .single();
+  return data?.id ?? null;
+}
+
+// ─── PATCH : Modifier le statut d'une facture ──────────────────
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params; // ✅ await obligatoire Next.js 15+
+    const userId = await getUserId();
+    if (!userId)
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    if (!id) {
+    const { id } = await params;
+    if (!id)
       return NextResponse.json({ error: "ID manquant" }, { status: 400 });
-    }
 
     const body = await request.json();
-
     if (!body.status) {
       return NextResponse.json(
         { error: "Le champ 'status' est requis" },
@@ -30,13 +43,17 @@ export async function PATCH(
       );
     }
 
+    // ✅ filtre par user_id → un user ne peut modifier que ses propres factures
     const { data, error } = await supabase
       .from("invoices")
       .update({ status: body.status })
       .eq("id", id)
+      .eq("user_id", userId)
       .select();
 
     if (error) throw error;
+    if (!data || data.length === 0)
+      return NextResponse.json({ error: "Facture introuvable" }, { status: 404 });
 
     return NextResponse.json(data[0]);
   } catch (err: any) {
@@ -48,24 +65,28 @@ export async function PATCH(
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// DELETE : Supprimer une facture
-// ─────────────────────────────────────────────────────────────
+// ─── DELETE : Supprimer une facture ────────────────────────────
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params; // ✅ await obligatoire Next.js 15+
+    const userId = await getUserId();
+    if (!userId)
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    if (!id) {
+    const { id } = await params;
+    if (!id)
       return NextResponse.json({ error: "ID manquant" }, { status: 400 });
-    }
 
-    const { error } = await supabase.from("invoices").delete().eq("id", id);
+    // ✅ filtre par user_id → un user ne peut supprimer que ses propres factures
+    const { error } = await supabase
+      .from("invoices")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) throw error;
-
     return NextResponse.json({ message: "Facture supprimée avec succès" });
   } catch (err: any) {
     console.error("Erreur DELETE Invoice:", err.message);
