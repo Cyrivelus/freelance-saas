@@ -1,4 +1,4 @@
-# 🚀 FreelanceSaaS — Plateforme de Gestion pour Freelances
+# FreelanceSaaS — Plateforme de Gestion pour Freelances
 
 [![Vercel](https://img.shields.io/badge/Vercel-Deployed-black?style=flat&logo=vercel)](https://votre-app.vercel.app)
 [![Next.js](https://img.shields.io/badge/Next.js-16-blue?style=flat&logo=next.js)](https://nextjs.org/)
